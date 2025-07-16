@@ -1,13 +1,13 @@
-# Enhanced Tree of Counterfactual (ToCF) Fact-Checking System
+# Enhanced Tree of Counterfactual (ToCF) Fact-Checking System for Vietnamese
 
-This repository contains an improved implementation of the Tree of Counterfactual (ToCF) approach for automated fact-checking. The system generates counterfactual statements and uses them to enhance fact-checking accuracy through multi-perspective reasoning.
+This repository contains an improved implementation of the Tree of Counterfactual (ToCF) approach for automated fact-checking in Vietnamese. The system generates counterfactual statements and uses them to enhance fact-checking accuracy through multi-perspective reasoning, specifically optimized for Vietnamese language and cultural context.
 
 ## 🚀 Key Improvements Made
 
-### 1. **Enhanced Prompting Strategy**
-- **English Prompts**: Switched from Vietnamese to English prompts for better model compatibility
-- **Structured Format**: Clear, step-by-step instructions with explicit formatting requirements
-- **Better Context**: Added reasoning process guidance and examples for counterfactual generation
+### 1. **Enhanced Vietnamese Prompting Strategy**
+- **Optimized Vietnamese Prompts**: Carefully crafted Vietnamese prompts for better model understanding
+- **Structured Format**: Clear, step-by-step instructions in natural Vietnamese with explicit formatting requirements
+- **Cultural Context**: Added reasoning process guidance and examples relevant to Vietnamese fact-checking scenarios
 
 ### 2. **Robust Label Extraction**
 - **Multiple Patterns**: Supports various output formats ([LABEL: X], [Label: X], etc.)
@@ -20,11 +20,11 @@ This repository contains an improved implementation of the Tree of Counterfactua
 - **Consistency Checking**: Analyzes agreement between counterfactuals
 - **Smart Fallback**: Defaults to NEI when high disagreement detected
 
-### 4. **Improved Counterfactual Generation**
-- **Better Validation**: Checks for actual contradiction with original statement
-- **Quality Filtering**: Ensures counterfactuals are realistic and well-formed
-- **Multiple Extraction Patterns**: Robust parsing of generated counterfactuals
-- **Contradiction Detection**: Heuristic to verify counterfactuals actually contradict original
+### 4. **Improved Vietnamese Counterfactual Generation**
+- **Vietnamese Contradiction Detection**: Recognizes Vietnamese contradictory terms and negation patterns
+- **Quality Filtering**: Ensures counterfactuals are realistic and grammatically correct in Vietnamese
+- **Multiple Extraction Patterns**: Robust parsing of Vietnamese generated counterfactuals
+- **Cultural Relevance**: Validates that counterfactuals make sense in Vietnamese context
 
 ### 5. **Optimized Generation Parameters**
 - **Fact-Checking**: Lower temperature (0.1) for consistent classification
@@ -114,14 +114,16 @@ python factchecking_ToCF.py counterfactuals.csv factcheck_data.csv results.csv \
 ### For Counterfactual Generation (`input_statements.csv`):
 ```csv
 Statement
-"The company's revenue increased by 25% in Q3 2023."
-"The new vaccine shows 95% effectiveness in clinical trials."
+"Doanh thu của công ty tăng 25% trong quý 3 năm 2023."
+"Vaccine mới cho thấy hiệu quả 95% trong thử nghiệm lâm sàng."
+"Việt Nam đã xuất khẩu 6,2 triệu tấn gạo trong năm 2023."
 ```
 
 ### For Fact-Checking (`factcheck_data.csv`):
 ```csv
 Statement,Context,Evidence_List,labels
-"Statement to verify","Background context","['Evidence 1', 'Evidence 2']",0
+"Doanh thu của công ty tăng 25% trong quý 3 năm 2023.","Công ty ABC công bố kết quả kinh doanh quý 3","['Báo cáo tài chính cho thấy doanh thu tăng 25%', 'CEO xác nhận tăng trưởng mạnh']",0
+"Vaccine mới có hiệu quả 95% phòng ngừa COVID-19","Nghiên cứu về vaccine mới của hãng XYZ","['Thử nghiệm lâm sàng giai đoạn 3 cho kết quả 95%', 'WHO chưa phê duyệt vaccine này']",2
 ```
 
 **Label Mapping:**
@@ -166,10 +168,12 @@ Statement,Context,Evidence_List,labels,predicted_label,processing_status,counter
 - **Batch Size**: Adjust based on GPU memory (1-8)
 - **Tree Depth**: 2-3 levels provide good coverage without redundancy
 
-### 3. **Data Quality**
-- Ensure statements are clear and factual
-- Provide relevant context and evidence
-- Balance dataset across different domains
+### 3. **Vietnamese Data Quality**
+- Ensure statements are clear and factual in Vietnamese
+- Provide relevant context and evidence in Vietnamese
+- Balance dataset across different Vietnamese domains (politics, economy, health, etc.)
+- Consider Vietnamese cultural context and terminology
+- Use proper Vietnamese diacritics and formatting
 
 ### 4. **Performance Optimization**
 - Use GPU acceleration when available

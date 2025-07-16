@@ -171,40 +171,45 @@ class ToCFFactChecker:
 
     def generate_fact_check_prompt(self, statement: str, context: str, evidence_list: List[str], 
                                  counterfactuals: List[str]) -> str:
-        """Generate optimized prompt for fact-checking using ToCF approach"""
-        evidence_text = "\n".join([f"• {ev}" for ev in evidence_list]) if evidence_list else "No evidence provided."
-        counterfactual_text = "\n".join([f"• {cf}" for cf in counterfactuals]) if counterfactuals else "No counterfactual statements available."
+        """Generate optimized Vietnamese prompt for fact-checking using ToCF approach"""
+        evidence_text = "\n".join([f"• {ev}" for ev in evidence_list]) if evidence_list else "Không có bằng chứng được cung cấp."
+        counterfactual_text = "\n".join([f"• {cf}" for cf in counterfactuals]) if counterfactuals else "Không có phản thực được cung cấp."
 
-        prompt = f"""You are a fact-checking expert. Your task is to verify the accuracy of claims using evidence and counterfactual reasoning.
+        prompt = f"""Bạn là chuyên gia kiểm tra sự thật. Nhiệm vụ của bạn là xác minh tính chính xác của các tuyên bố sử dụng bằng chứng và lý luận phản thực.
 
-**CLAIM TO VERIFY:**
+**TUYÊN BỐ CẦN XÁC MINH:**
 "{statement}"
 
-**CONTEXT:**
-{context if context else "No additional context provided."}
+**BỐI CẢNH:**
+{context if context else "Không có bối cảnh bổ sung."}
 
-**SUPPORTING EVIDENCE:**
+**BẰNG CHỨNG HỖ TRỢ:**
 {evidence_text}
 
-**COUNTERFACTUAL STATEMENTS:**
+**CÁC TUYÊN BỐ PHẢN THỰC:**
 {counterfactual_text}
 
-**INSTRUCTIONS:**
-1. Analyze the claim against the provided evidence
-2. Consider how counterfactual statements help reveal the claim's veracity
-3. Classify the claim into exactly ONE category:
-   - Support: The evidence directly supports the claim
-   - Refuted: The evidence directly contradicts the claim  
-   - NEI: Not Enough Information to determine veracity
+**HƯỚNG DẪN:**
+1. Phân tích tuyên bố dựa trên bằng chứng được cung cấp
+2. Xem xét cách các tuyên bố phản thực giúp tiết lộ tính xác thực của tuyên bố
+3. Phân loại tuyên bố vào CHÍNH XÁC MỘT danh mục:
+   - Support: Bằng chứng trực tiếp ủng hộ tuyên bố
+   - Refuted: Bằng chứng trực tiếp bác bỏ tuyên bố
+   - NEI: Không đủ thông tin để xác định tính xác thực
 
-**REASONING PROCESS:**
-- Compare claim with evidence
-- Assess consistency with known facts
-- Consider alternative scenarios from counterfactuals
-- Make final determination
+**QUY TRÌNH LẬP LUẬN:**
+- So sánh tuyên bố với bằng chứng
+- Đánh giá tính nhất quán với các sự kiện đã biết
+- Xem xét các kịch bản thay thế từ phản thực
+- Đưa ra quyết định cuối cùng
 
-**OUTPUT FORMAT:** Only output the label in this exact format:
-[LABEL: Support] OR [LABEL: Refuted] OR [LABEL: NEI]
+**ĐỊNH DẠNG ĐẦU RA:** Chỉ xuất ra nhãn theo định dạng chính xác này:
+[LABEL: Support] HOẶC [LABEL: Refuted] HOẶC [LABEL: NEI]
+
+**QUY TẮC QUAN TRỌNG:**
+- CHỈ trả lời bằng một trong ba nhãn: Support, Refuted, NEI
+- KHÔNG thêm giải thích hay văn bản khác
+- Đảm bảo định dạng chính xác: [LABEL: X]
 
 [LABEL:"""
         return prompt
