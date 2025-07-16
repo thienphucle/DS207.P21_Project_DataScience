@@ -236,173 +236,48 @@ class CounterfactualGenerator:
         return unique_cfs if unique_cfs else None
 
     def _create_prompt(self, statement: str) -> str:
-        """Create optimized Vietnamese prompt for counterfactual generation"""
-        return f"""Bạn là chuyên gia tạo ra các tuyên bố phản thực để kiểm tra sự thật. Hãy tạo chính xác 2 phiên bản phản thực của tuyên bố đã cho.
+        """Create Vietnamese counterfactual generation prompt"""
+        return f"""Tạo 2 phản thực mâu thuẫn với tuyên bố gốc:
 
-**TUYÊN BỐ GỐC:**
-"{statement}"
+GỐC: "{statement}"
 
-**YÊU CẦU CHO CÁC TUYÊN BỐ PHẢN THỰC:**
-1. Phải trực tiếp mâu thuẫn với tuyên bố gốc
-2. Nên hợp lý và thực tế (không rõ ràng sai lệch)
-3. Duy trì cấu trúc và độ dài tương tự như bản gốc
-4. Thay đổi các yếu tố thực tế chính (ngày tháng, số liệu, tên, kết quả)
-5. Mỗi phản thực phải là một tuyên bố hoàn chỉnh, đúng ngữ pháp
-6. Đảm bảo sự đối lập logic rõ ràng với tuyên bố gốc
+Yêu cầu: Mâu thuẫn trực tiếp, hợp lý, cùng độ dài
+Ví dụ - Gốc: "Doanh thu tăng 20%" 
+Phản thực: "Doanh thu giảm 15%"
 
-**VÍ DỤ VỀ PHẢN THỰC TỐT:**
-- Gốc: "Công ty tăng lợi nhuận 20% trong năm 2023"
-- Phản thực 1: "Công ty giảm lợi nhuận 15% trong năm 2023"
-- Phản thực 2: "Lợi nhuận của công ty không thay đổi trong năm 2023"
-
-**ĐỊNH DẠNG ĐẦU RA:**
-Tạo chính xác 2 phản thực theo định dạng này:
-
-1. [Tuyên bố phản thực thứ nhất]
-2. [Tuyên bố phản thực thứ hai]
-
-**QUY TẮC QUAN TRỌNG:**
-- CHỈ tạo 2 tuyên bố phản thực
-- KHÔNG thêm giải thích hay bình luận
-- Đảm bảo mỗi phản thực mâu thuẫn rõ ràng với tuyên bố gốc
-- Sử dụng tiếng Việt tự nhiên và chính xác
-
-**CÁC TUYÊN BỐ PHẢN THỰC:**
 1. 
 2. """
 
     def _extract_counterfactuals(self, response: str, original_statement: str) -> Optional[List[str]]:
-        """Extract and validate counterfactuals from response with improved logic"""
+        """Extract counterfactuals from response"""
         try:
-            # Get the relevant part of the response
-            generated_part = response
+            # Simple numbered pattern extraction
+            pattern = r"(?:^|\n)\d+\.\s*(.+?)(?=\n\d+\.|\n*$)"
+            matches = re.findall(pattern, response, re.MULTILINE | re.DOTALL)
             
-            # Look for section after Vietnamese markers
-            markers = ["CÁC TUYÊN BỐ PHẢN THỰC:", "**CÁC TUYÊN BỐ PHẢN THỰC:**", "PHẢN THỰC:", "counterfactuals:", "1.", "2."]
-            for marker in markers:
-                if marker in response:
-                    parts = response.split(marker)
-                    if len(parts) > 1:
-                        generated_part = marker + parts[-1]
-                        break
+            if not matches:
+                # Fallback: look for any lines that look like statements
+                lines = [line.strip() for line in response.split('\n') if line.strip()]
+                matches = [re.sub(r'^[\d\.\-•*\s]+', '', line).strip() 
+                          for line in lines 
+                          if len(line) > 20 and not line.startswith(('Gốc:', 'Yêu cầu:', 'Ví dụ:'))]
             
-            # Multiple extraction patterns for robustness
-            patterns = [
-                r"1\.\s*(.+?)(?:\n2\.\s*(.+?))?(?:\n|$)",  # Numbered list format
-                r"(?:^|\n)1\.\s*(.+?)(?:\n2\.\s*(.+?))?(?:\n|$)",  # Strict numbered format
-                r"(?:^|\n)\d+\.\s*(.+?)(?=\n\d+\.|\n*$)",  # General numbered items
-                r"[-•*]\s*(.+?)(?=\n[-•*]|\n*$)",  # Bullet points
-                r"(?:Counterfactual\s*\d+:?\s*)(.+?)(?=\n(?:Counterfactual|\n)|$)"  # Explicit counterfactual labels
-            ]
-            
-            cfs = []
-            for pattern in patterns:
-                matches = re.findall(pattern, generated_part, re.MULTILINE | re.DOTALL)
-                if matches:
-                    # Handle tuple results from pattern with groups
-                    if isinstance(matches[0], tuple):
-                        for match_tuple in matches:
-                            cfs.extend([m.strip() for m in match_tuple if m.strip()])
-                    else:
-                        cfs = [match.strip() for match in matches]
-                    
-                    if len(cfs) >= 2:
-                        break
-            
-            # Fallback: split by lines and look for statement-like content
-            if len(cfs) < 2:
-                lines = [line.strip() for line in generated_part.split('\n') if line.strip()]
-                potential_cfs = []
-                
-                for line in lines:
-                    # Remove numbering and formatting
-                    cleaned = re.sub(r'^[\d\.\-•*\s\[\]]+', '', line).strip('"\'[]')
-                    
-                    # Check if it looks like a statement (Vietnamese)
-                    if (len(cleaned) > 20 and len(cleaned) < 500 and
-                        not cleaned.lower().startswith(("tuyên bố gốc", "yêu cầu", "ví dụ", "định dạng", "phản thực", "quy tắc", "original", "requirement", "example", "output", "format", "counterfactual")) and
-                        not cleaned.startswith("**") and
-                        ":" not in cleaned[:20]):  # Avoid headers with colons
-                        potential_cfs.append(cleaned)
-                
-                if len(potential_cfs) >= 2:
-                    cfs = potential_cfs
-            
-            # Validate and clean counterfactuals
+            # Clean and validate
             valid_cfs = []
-            original_lower = original_statement.lower()
-            
-            for cf in cfs[:3]:  # Take max 3 to choose best 2
-                # Clean the counterfactual
-                cf = re.sub(r'^[\d\.\-•*\s\[\]]+', '', cf).strip('"\'[]')
-                cf = re.sub(r'\s+', ' ', cf).strip()  # Normalize whitespace
-                
-                # Validation criteria (Vietnamese)
-                if (len(cf) > 15 and len(cf) < 500 and
-                    cf.lower() != original_lower and
-                    not cf.lower().startswith(("tuyên bố gốc", "yêu cầu", "ví dụ", "ghi chú", "định dạng", "quy tắc", "original", "requirement", "example", "note", "format")) and
-                    self._is_contradictory(cf, original_statement) and
-                    not cf.startswith("**")):
+            for cf in matches[:3]:
+                cf = re.sub(r'\s+', ' ', cf.strip())
+                if (15 < len(cf) < 500 and 
+                    cf.lower() != original_statement.lower() and
+                    not cf.startswith(('**', 'Gốc:', 'Yêu cầu:'))):
                     valid_cfs.append(cf)
             
-            # Return best 2 counterfactuals
-            return valid_cfs[:2] if len(valid_cfs) >= 1 else None
+            return valid_cfs[:2] if valid_cfs else None
             
         except Exception as e:
             logger.error(f"Error extracting counterfactuals: {str(e)}")
             return None
     
-    def _is_contradictory(self, counterfactual: str, original: str) -> bool:
-        """Simple check to see if counterfactual contradicts original"""
-        try:
-            # Basic contradiction indicators
-            cf_lower = counterfactual.lower()
-            orig_lower = original.lower()
-            
-            # Check for obvious contradictory terms (Vietnamese and English)
-            contradictory_pairs = [
-                # Vietnamese pairs
-                ("tăng", "giảm"), ("tăng lên", "giảm xuống"), ("nhiều", "ít"),
-                ("lớn", "nhỏ"), ("cao", "thấp"), ("nhanh", "chậm"),
-                ("thành công", "thất bại"), ("thắng", "thua"), ("đúng", "sai"),
-                ("có", "không"), ("tích cực", "tiêu cực"), ("thuận lợi", "bất lợi"),
-                ("tốt", "xấu"), ("mạnh", "yếu"), ("dương", "âm"),
-                ("tiến bộ", "lùi bước"), ("phát triển", "suy thoái"),
-                ("cải thiện", "xấu đi"), ("tăng trưởng", "suy giảm"),
-                # English pairs for mixed content
-                ("increased", "decreased"), ("rise", "fall"), ("up", "down"),
-                ("success", "failure"), ("won", "lost"), ("true", "false"),
-                ("yes", "no"), ("positive", "negative"), ("more", "less"),
-                ("high", "low"), ("big", "small"), ("fast", "slow")
-            ]
-            
-            for pos, neg in contradictory_pairs:
-                if ((pos in orig_lower and neg in cf_lower) or 
-                    (neg in orig_lower and pos in cf_lower)):
-                    return True
-            
-            # Check for numerical contradictions (rough heuristic)
-            orig_numbers = re.findall(r'\d+', original)
-            cf_numbers = re.findall(r'\d+', counterfactual)
-            
-            if orig_numbers and cf_numbers:
-                # If numbers are different, it's likely contradictory
-                return orig_numbers != cf_numbers
-            
-            # Vietnamese negation patterns
-            vietnamese_negations = ["không", "chưa", "chẳng", "đâu", "không phải", "chưa từng"]
-            orig_has_negation = any(neg in orig_lower for neg in vietnamese_negations)
-            cf_has_negation = any(neg in cf_lower for neg in vietnamese_negations)
-            
-            # If one has negation and other doesn't, likely contradictory
-            if orig_has_negation != cf_has_negation:
-                return True
-            
-            # If counterfactual is significantly different in content, assume contradiction
-            return len(set(orig_lower.split()) & set(cf_lower.split())) < len(orig_lower.split()) * 0.6
-            
-        except:
-            return True  # Default to assuming contradiction if check fails
+
 
     def process_dataset(self, input_file: str, output_file: str, statement_column: str = "Statement", 
                        use_tree: bool = False, tree_depth: int = 2, batch_size: int = 4):

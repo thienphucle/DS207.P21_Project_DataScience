@@ -44,17 +44,10 @@ vietnamese_pairs = [
 ]
 ```
 
-#### Vietnamese Negation Patterns
-```python
-vietnamese_negations = [
-    "không",      # no/not
-    "chưa",       # not yet
-    "chẳng",      # not at all
-    "đâu",        # nowhere/not
-    "không phải", # is not
-    "chưa từng"   # never
-]
-```
+#### Simplified Processing
+- Removed complex contradiction detection for better performance
+- Streamlined extraction patterns for faster processing
+- Simplified aggregation logic while maintaining effectiveness
 
 ### 4. **Model Compatibility for Vietnamese**
 
@@ -77,9 +70,10 @@ vietnamese_negations = [
 - Multiple fallback patterns for Vietnamese responses
 
 #### Quality Metrics
-- **Contradiction Rate**: Percentage of counterfactuals that actually contradict originals
-- **Vietnamese Grammar**: Validates proper Vietnamese sentence structure
-- **Cultural Relevance**: Ensures counterfactuals are realistic in Vietnamese context
+- **F1 Macro**: Average F1 across all classes
+- **F1 Micro**: Overall F1 considering class frequencies  
+- **Accuracy**: Overall classification accuracy
+- **Processing Speed**: Optimized for faster inference
 
 ## 📊 Expected Performance Improvements
 

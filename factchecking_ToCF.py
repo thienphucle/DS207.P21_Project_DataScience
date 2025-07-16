@@ -171,48 +171,21 @@ class ToCFFactChecker:
 
     def generate_fact_check_prompt(self, statement: str, context: str, evidence_list: List[str], 
                                  counterfactuals: List[str]) -> str:
-        """Generate optimized Vietnamese prompt for fact-checking using ToCF approach"""
-        evidence_text = "\n".join([f"• {ev}" for ev in evidence_list]) if evidence_list else "Không có bằng chứng được cung cấp."
-        counterfactual_text = "\n".join([f"• {cf}" for cf in counterfactuals]) if counterfactuals else "Không có phản thực được cung cấp."
+        """Generate Vietnamese fact-checking prompt"""
+        evidence_text = "\n".join([f"• {ev}" for ev in evidence_list]) if evidence_list else "Không có bằng chứng."
+        counterfactual_text = "\n".join([f"• {cf}" for cf in counterfactuals]) if counterfactuals else "Không có phản thực."
 
-        prompt = f"""Bạn là chuyên gia kiểm tra sự thật. Nhiệm vụ của bạn là xác minh tính chính xác của các tuyên bố sử dụng bằng chứng và lý luận phản thực.
+        return f"""Kiểm tra sự thật cho tuyên bố sau:
 
-**TUYÊN BỐ CẦN XÁC MINH:**
-"{statement}"
+TUYÊN BỐ: "{statement}"
+BỐI CẢNH: {context or "Không có"}
+BẰNG CHỨNG: {evidence_text}
+PHẢN THỰC: {counterfactual_text}
 
-**BỐI CẢNH:**
-{context if context else "Không có bối cảnh bổ sung."}
-
-**BẰNG CHỨNG HỖ TRỢ:**
-{evidence_text}
-
-**CÁC TUYÊN BỐ PHẢN THỰC:**
-{counterfactual_text}
-
-**HƯỚNG DẪN:**
-1. Phân tích tuyên bố dựa trên bằng chứng được cung cấp
-2. Xem xét cách các tuyên bố phản thực giúp tiết lộ tính xác thực của tuyên bố
-3. Phân loại tuyên bố vào CHÍNH XÁC MỘT danh mục:
-   - Support: Bằng chứng trực tiếp ủng hộ tuyên bố
-   - Refuted: Bằng chứng trực tiếp bác bỏ tuyên bố
-   - NEI: Không đủ thông tin để xác định tính xác thực
-
-**QUY TRÌNH LẬP LUẬN:**
-- So sánh tuyên bố với bằng chứng
-- Đánh giá tính nhất quán với các sự kiện đã biết
-- Xem xét các kịch bản thay thế từ phản thực
-- Đưa ra quyết định cuối cùng
-
-**ĐỊNH DẠNG ĐẦU RA:** Chỉ xuất ra nhãn theo định dạng chính xác này:
-[LABEL: Support] HOẶC [LABEL: Refuted] HOẶC [LABEL: NEI]
-
-**QUY TẮC QUAN TRỌNG:**
-- CHỈ trả lời bằng một trong ba nhãn: Support, Refuted, NEI
-- KHÔNG thêm giải thích hay văn bản khác
-- Đảm bảo định dạng chính xác: [LABEL: X]
+Phân loại: Support (ủng hộ), Refuted (bác bỏ), hoặc NEI (không đủ thông tin)
+Chỉ trả lời: [LABEL: Support/Refuted/NEI]
 
 [LABEL:"""
-        return prompt
 
     def stance_detection(self, statement: str, context: str, evidence_list: List[str], 
                         counterfactuals: List[str], max_retries: int = 3) -> int:
@@ -251,29 +224,16 @@ class ToCFFactChecker:
                 
                 response = self.tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
                 
-                # Extract label from response with multiple patterns
-                response_label = "NEI"  # Default fallback
-                
-                # Try multiple extraction patterns
-                patterns = [
-                    r"\[LABEL:\s*(Support|Refuted|NEI)\]",
-                    r"\[Label:\s*(Support|Refuted|NEI)\]", 
-                    r"(?:LABEL|Label):\s*(Support|Refuted|NEI)",
-                    r"\b(Support|Refuted|NEI)\b(?:\s*[\]\)])?$"
-                ]
-                
-                for pattern in patterns:
-                    match = re.search(pattern, response, re.IGNORECASE)
-                    if match:
-                        response_label = match.group(1).title()  # Ensure proper case
-                        break
-                
-                # Final fallback: look for label keywords
-                if response_label == "NEI":
-                    response_lower = response.lower()
-                    if "support" in response_lower and "refuted" not in response_lower:
+                # Extract label from response
+                response_label = "NEI"
+                match = re.search(r"\[LABEL:\s*(Support|Refuted|NEI)\]", response, re.IGNORECASE)
+                if match:
+                    response_label = match.group(1).title()
+                else:
+                    # Simple fallback
+                    if "support" in response.lower():
                         response_label = "Support"
-                    elif "refuted" in response_lower and "support" not in response_lower:
+                    elif "refuted" in response.lower():
                         response_label = "Refuted"
                 
                 result = self.label_mapping[response_label]
@@ -286,75 +246,33 @@ class ToCFFactChecker:
                 return result
                 
             except Exception as e:
-                logger.warning(f"Stance detection attempt {attempt + 1} failed: {str(e)}")
                 if attempt == max_retries - 1:
-                    return 2  # Default to NEI on failure
-                
-                time.sleep(0.5 + random.uniform(0, 0.5))
+                    return 2
+                time.sleep(0.5)
         
         return 2  # Default to NEI
 
     def evaluate_stance_with_counterfactuals(self, statement: str, context: str, evidence_list: List[str], 
                                            counterfactuals: List[str], aggregation_threshold: float = 0.6) -> int:
-        """Evaluate stance using counterfactuals with enhanced aggregation"""
+        """Evaluate stance using counterfactuals with aggregation"""
         if not counterfactuals:
-            # If no counterfactuals, use original statement only
             return self.stance_detection(statement, context, evidence_list, [])
         
-        # Get stance for original statement (weighted more heavily)
+        # Get stances
         original_stance = self.stance_detection(statement, context, evidence_list, [])
+        cf_stances = [self.stance_detection(cf, context, evidence_list, []) for cf in counterfactuals[:5]]
         
-        # Get stances for each counterfactual  
-        counterfactual_stances = []
-        for cf in counterfactuals[:5]:  # Limit to first 5 counterfactuals for efficiency
-            cf_stance = self.stance_detection(cf, context, evidence_list, [])
-            counterfactual_stances.append(cf_stance)
+        # Weighted voting (original gets double weight)
+        all_votes = [original_stance, original_stance] + cf_stances
+        label_counts = Counter(all_votes)
+        max_count = max(label_counts.values())
+        max_ratio = max_count / len(all_votes)
         
-        # Enhanced aggregation strategy
-        if not counterfactual_stances:
-            return original_stance
-            
-        # Weighted voting: original statement gets double weight
-        weighted_votes = [original_stance, original_stance] + counterfactual_stances
-        label_counts = Counter(weighted_votes)
-        total = len(weighted_votes)
-        
-        # Calculate ratios
-        support_ratio = label_counts[0] / total if total > 0 else 0
-        refuted_ratio = label_counts[1] / total if total > 0 else 0
-        nei_ratio = label_counts[2] / total if total > 0 else 0
-        
-        # Confidence-based decision making
-        max_ratio = max(support_ratio, refuted_ratio, nei_ratio)
-        
-        # High confidence threshold
-        if max_ratio >= 0.7:
-            if support_ratio == max_ratio:
-                return 0  # Support
-            elif refuted_ratio == max_ratio:
-                return 1  # Refuted
-            else:
-                return 2  # NEI
-        
-        # Medium confidence - prefer original stance unless contradicted
-        elif max_ratio >= aggregation_threshold:
-            # If original stance agrees with majority, prefer it
-            if original_stance == label_counts.most_common(1)[0][0]:
-                return original_stance
-            else:
-                return label_counts.most_common(1)[0][0]
-        
-        # Low confidence - use consistency check
+        # Return most frequent if confident, otherwise original
+        if max_ratio >= aggregation_threshold:
+            return label_counts.most_common(1)[0][0]
         else:
-            # Check if counterfactuals are consistent
-            cf_counter = Counter(counterfactual_stances)
-            cf_consistency = len(cf_counter) <= 2  # Most agree on 1-2 labels
-            
-            if cf_consistency and original_stance in cf_counter:
-                return original_stance
-            else:
-                # Default to NEI when there's high disagreement
-                return 2  # NEI
+            return original_stance
 
     def process_fact_checking_dataset(self, counterfactuals_file: str, fact_check_file: str, 
                                     output_file: str, statement_column: str = "Statement",
@@ -404,9 +322,7 @@ class ToCFFactChecker:
                     predicted_labels.append(predicted_label)
                     processing_status.append('success')
                     
-                    logger.info(f"Processed row {idx}: Statement='{statement[:50]}...', "
-                              f"Evidence count={len(evidence_list)}, Counterfactuals={len(counterfactuals)}, "
-                              f"Predicted={self.reverse_label_mapping[predicted_label]}")
+                    logger.info(f"Row {idx}: {self.reverse_label_mapping[predicted_label]} (CF={len(counterfactuals)})")
                     
                 except Exception as e:
                     logger.error(f"Error processing row {idx}: {str(e)}")
@@ -459,21 +375,13 @@ class ToCFFactChecker:
                 
                 summary['evaluation_metrics'] = {
                     'accuracy': float(accuracy_score(y_true, y_pred)),
-                    'precision': float(precision_score(y_true, y_pred, average='weighted', zero_division=0)),
-                    'recall': float(recall_score(y_true, y_pred, average='weighted', zero_division=0)),
-                    'f1_score': float(f1_score(y_true, y_pred, average='weighted', zero_division=0))
+                    'precision_macro': float(precision_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'recall_macro': float(recall_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'f1_macro': float(f1_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'f1_micro': float(f1_score(y_true, y_pred, average='micro', zero_division=0))
                 }
                 
-                # Per-class metrics
-                for i, label_name in self.reverse_label_mapping.items():
-                    if i in y_true:
-                        precision = precision_score(y_true, y_pred, labels=[i], average=None, zero_division=0)
-                        recall = recall_score(y_true, y_pred, labels=[i], average=None, zero_division=0)
-                        f1 = f1_score(y_true, y_pred, labels=[i], average=None, zero_division=0)
-                        
-                        summary['evaluation_metrics'][f'{label_name.lower()}_precision'] = float(precision[0]) if len(precision) > 0 else 0.0
-                        summary['evaluation_metrics'][f'{label_name.lower()}_recall'] = float(recall[0]) if len(recall) > 0 else 0.0
-                        summary['evaluation_metrics'][f'{label_name.lower()}_f1'] = float(f1[0]) if len(f1) > 0 else 0.0
+
         
         return summary
 
@@ -492,17 +400,15 @@ class ToCFFactChecker:
             
             # Calculate metrics
             accuracy = accuracy_score(y_true, y_pred)
-            precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
-            recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
-            f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+            f1_macro = f1_score(y_true, y_pred, average="macro", zero_division=0)
+            f1_micro = f1_score(y_true, y_pred, average="micro", zero_division=0)
             
             print(f"\n{'='*50}")
             print(f"FACT-CHECKING PERFORMANCE EVALUATION")
             print(f"{'='*50}")
             print(f"Accuracy:  {accuracy:.4f}")
-            print(f"Precision: {precision:.4f}")
-            print(f"Recall:    {recall:.4f}")
-            print(f"F1 Score:  {f1:.4f}")
+            print(f"F1 Macro:  {f1_macro:.4f}")
+            print(f"F1 Micro:  {f1_micro:.4f}")
             print(f"{'='*50}")
             
             # Generate confusion matrix
@@ -526,9 +432,8 @@ class ToCFFactChecker:
             
             return {
                 'accuracy': accuracy,
-                'precision': precision,
-                'recall': recall,
-                'f1_score': f1
+                'f1_macro': f1_macro,
+                'f1_micro': f1_micro
             }
             
         except Exception as e:
