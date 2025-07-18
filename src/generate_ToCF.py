@@ -42,7 +42,7 @@ class CounterfactualGenerator:
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
                 trust_remote_code=True,
-                token=self.access_token,
+               token=self.access_token,
                 model_max_length=2048,
                 padding_side="left"
             )
@@ -92,13 +92,15 @@ class CounterfactualGenerator:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=150,  # Reduced for speed
+                max_new_tokens=200,
                 do_sample=True,
-                top_p=0.95,
-                temperature=0.8,
-                num_beams=2,
+                top_p=0.9,
+                temperature=0.7,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=3,
                 early_stopping=True,
                 pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
                 use_cache=True
             )
         
@@ -158,13 +160,15 @@ class CounterfactualGenerator:
                     with torch.no_grad():
                         outputs = self.model.generate(
                             **inputs,
-                            max_new_tokens=150,
+                            max_new_tokens=200,
                             do_sample=True,
-                            top_p=0.95,
-                            temperature=0.8,
-                            num_beams=2,
+                            top_p=0.9,
+                            temperature=0.7,
+                            repetition_penalty=1.2,
+                            no_repeat_ngram_size=3,
                             early_stopping=True,
                             pad_token_id=self.tokenizer.eos_token_id,
+                            eos_token_id=self.tokenizer.eos_token_id,
                             use_cache=True
                         )
                     
@@ -232,62 +236,116 @@ class CounterfactualGenerator:
         return unique_cfs if unique_cfs else None
 
     def _create_prompt(self, statement: str) -> str:
-        """Create prompt for counterfactual generation"""
-        return f"""Bạn là trợ lý kiểm chứng thông tin. Hãy tạo 2 phản sự thật cho câu sau:
+        """Create optimized Vietnamese prompt for counterfactual generation"""
+        return f"""Bạn là chuyên gia tạo ra các tuyên bố phản thực để kiểm tra sự thật. Hãy tạo chính xác 2 phiên bản phản thực của tuyên bố đã cho.
 
-        **Câu gốc:** '{statement}'
+**TUYÊN BỐ GỐC:**
+"{statement}"
 
-        **Yêu cầu:**
-        1. Mâu thuẫn rõ ràng với câu gốc
-        2. Phải nghe có vẻ hợp lý và thuyết phục
-        3. Thay đổi ít nhất một yếu tố quan trọng
-        4. Giữ nguyên văn phong và độ dài
-        5. Mỗi phản sự thật phải là một câu hoàn chỉnh
+**YÊU CẦU CHO CÁC TUYÊN BỐ PHẢN THỰC:**
+1. Phải trực tiếp mâu thuẫn với tuyên bố gốc
+2. Nên hợp lý và thực tế (không rõ ràng sai lệch)
+3. Duy trì cấu trúc và độ dài tương tự như bản gốc
+4. Thay đổi các yếu tố thực tế chính (ngày tháng, số liệu, tên, kết quả)
+5. Mỗi phản thực phải là một tuyên bố hoàn chỉnh, đúng ngữ pháp
+6. Đảm bảo sự đối lập logic rõ ràng với tuyên bố gốc
 
-        **Tạo 2 phản sự thật:**
-        1. 
-        2.
-        """
+**VÍ DỤ VỀ PHẢN THỰC TỐT:**
+- Gốc: "Công ty tăng lợi nhuận 20% trong năm 2023"
+- Phản thực 1: "Công ty giảm lợi nhuận 15% trong năm 2023"
+- Phản thực 2: "Lợi nhuận của công ty không thay đổi trong năm 2023"
+
+**ĐỊNH DẠNG ĐẦU RA:**
+Tạo chính xác 2 phản thực theo định dạng này:
+
+1. [Tuyên bố phản thực thứ nhất]
+2. [Tuyên bố phản thực thứ hai]
+
+**QUY TẮC QUAN TRỌNG:**
+- CHỈ tạo 2 tuyên bố phản thực
+- KHÔNG thêm giải thích hay bình luận
+- Đảm bảo mỗi phản thực mâu thuẫn rõ ràng với tuyên bố gốc
+- Sử dụng tiếng Việt tự nhiên và chính xác
+
+**CÁC TUYÊN BỐ PHẢN THỰC:**
+1. 
+2. """
 
     def _extract_counterfactuals(self, response: str, original_statement: str) -> Optional[List[str]]:
-        """Extract and validate counterfactuals from response"""
+        """Extract and validate counterfactuals from response with improved logic"""
         try:
-            # Get generated part
-            if "Tạo 2 phản sự thật:" in response:
-                generated_part = response.split("Tạo 2 phản sự thật:")[-1]
-            else:
-                generated_part = response
+            # Get the relevant part of the response
+            generated_part = response
             
-            # Extract numbered items
+            # Look for section after Vietnamese markers
+            markers = ["CÁC TUYÊN BỐ PHẢN THỰC:", "**CÁC TUYÊN BỐ PHẢN THỰC:**", "PHẢN THỰC:", "counterfactuals:", "1.", "2."]
+            for marker in markers:
+                if marker in response:
+                    parts = response.split(marker)
+                    if len(parts) > 1:
+                        generated_part = marker + parts[-1]
+                        break
+            
+            # Multiple extraction patterns for robustness
             patterns = [
-                r"\d+\.\s*(.+?)(?=\n\d+\.|\n*$)",
-                r"[-•]\s*(.+?)(?=\n[-•]|\n*$)"
+                r"1\.\s*(.+?)(?:\n2\.\s*(.+?))?(?:\n|$)",  # Numbered list format
+                r"(?:^|\n)1\.\s*(.+?)(?:\n2\.\s*(.+?))?(?:\n|$)",  # Strict numbered format
+                r"(?:^|\n)\d+\.\s*(.+?)(?=\n\d+\.|\n*$)",  # General numbered items
+                r"[-•*]\s*(.+?)(?=\n[-•*]|\n*$)",  # Bullet points
+                r"(?:Counterfactual\s*\d+:?\s*)(.+?)(?=\n(?:Counterfactual|\n)|$)"  # Explicit counterfactual labels
             ]
             
             cfs = []
             for pattern in patterns:
-                matches = re.findall(pattern, generated_part, re.DOTALL)
+                matches = re.findall(pattern, generated_part, re.MULTILINE | re.DOTALL)
                 if matches:
-                    cfs = [match.strip() for match in matches]
-                    break
+                    # Handle tuple results from pattern with groups
+                    if isinstance(matches[0], tuple):
+                        for match_tuple in matches:
+                            cfs.extend([m.strip() for m in match_tuple if m.strip()])
+                    else:
+                        cfs = [match.strip() for match in matches]
+                    
+                    if len(cfs) >= 2:
+                        break
             
-            # Fallback: split by lines
-            if not cfs:
+            # Fallback: split by lines and look for statement-like content
+            if len(cfs) < 2:
                 lines = [line.strip() for line in generated_part.split('\n') if line.strip()]
-                cfs = [line for line in lines if len(line) > 15 and not line.startswith(('**', 'Câu', 'Yêu cầu'))]
-            
-            # Validate and clean
-            valid_cfs = []
-            for cf in cfs:
-                cf = re.sub(r'^[\d\.\-•\s]+', '', cf).strip('"\'')
+                potential_cfs = []
                 
+                for line in lines:
+                    # Remove numbering and formatting
+                    cleaned = re.sub(r'^[\d\.\-•*\s\[\]]+', '', line).strip('"\'[]')
+                    
+                    # Check if it looks like a statement (Vietnamese)
+                    if (len(cleaned) > 20 and len(cleaned) < 500 and
+                        not cleaned.lower().startswith(("tuyên bố gốc", "yêu cầu", "ví dụ", "định dạng", "phản thực", "quy tắc", "original", "requirement", "example", "output", "format", "counterfactual")) and
+                        not cleaned.startswith("**") and
+                        ":" not in cleaned[:20]):  # Avoid headers with colons
+                        potential_cfs.append(cleaned)
+                
+                if len(potential_cfs) >= 2:
+                    cfs = potential_cfs
+            
+            # Validate and clean counterfactuals
+            valid_cfs = []
+            original_lower = original_statement.lower()
+            
+            for cf in cfs[:3]:  # Take max 3 to choose best 2
+                # Clean the counterfactual
+                cf = re.sub(r'^[\d\.\-•*\s\[\]]+', '', cf).strip('"\'[]')
+                cf = re.sub(r'\s+', ' ', cf).strip()  # Normalize whitespace
+                
+                # Validation criteria (Vietnamese)
                 if (len(cf) > 15 and len(cf) < 500 and
-                    not cf.lower().startswith(("câu gốc", "yêu cầu", "tạo", "phản sự thật")) and
-                    cf.lower() != original_statement.lower() and
+                    cf.lower() != original_lower and
+                    not cf.lower().startswith(("tuyên bố gốc", "yêu cầu", "ví dụ", "ghi chú", "định dạng", "quy tắc", "original", "requirement", "example", "note", "format")) and
                     not cf.startswith("**")):
                     valid_cfs.append(cf)
             
-            return valid_cfs[:2] if valid_cfs else None
+            # Return best 2 counterfactuals
+            return valid_cfs[:2] if len(valid_cfs) >= 1 else None
             
         except Exception as e:
             logger.error(f"Error extracting counterfactuals: {str(e)}")
@@ -389,7 +447,7 @@ def main():
     parser = argparse.ArgumentParser(description='Generate counterfactuals (Optimized)')
     parser.add_argument('input_file', help='Input CSV file')
     parser.add_argument('output_file', help='Output CSV file')
-    parser.add_argument('--model', default='Qwen/Qwen2.5-72B-Instruct', help='Model name')
+    parser.add_argument('--model', default='vilm/Quyen-Pro-v0.1', help='Model name')
     parser.add_argument('--token', required=True, help='HuggingFace token')
     parser.add_argument('--statement-column', default='Statement', help='Statement column name')
     parser.add_argument('--test-mode', action='store_true', help='Test with first 5 statements')
